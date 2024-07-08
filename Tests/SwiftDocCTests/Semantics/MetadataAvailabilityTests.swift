@@ -43,7 +43,7 @@ class MetadataAvailabilityTests: XCTestCase {
             try assertDirective(Metadata.self, source: source) { directive, problems in
                 XCTAssertEqual(2, problems.count)
                 let diagnosticIdentifiers = Set(problems.map { $0.diagnostic.identifier })
-                XCTAssertEqual(diagnosticIdentifiers, ["org.swift.docc.\(Metadata.Availability.self).DuplicateIntroduced"])
+                XCTAssertEqual(diagnosticIdentifiers, ["org.swift.docc.\(Metadata.Availability.self).DuplicatePlatform"])
             }
         }
     }

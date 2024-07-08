@@ -366,8 +366,8 @@ class MetadataTests: XCTestCase {
         XCTAssertEqual(
             problems,
             [
-                "4: warning – org.swift.docc.DuplicatePageImage",
-                "5: warning – org.swift.docc.DuplicatePageImage",
+                "4: warning – org.swift.docc.PageImage.DuplicatePurpose",
+                "5: warning – org.swift.docc.PageImage.DuplicatePurpose",
             ]
         )
     }

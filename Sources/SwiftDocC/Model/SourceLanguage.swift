@@ -9,6 +9,18 @@
 */
 
 /// A programming language.
+///
+/// A programming language is defined by an ``id``, and can have a number of ``idAliases`` which can also be used to refer to it.
+///
+/// ## Topics
+///
+/// ### Known languages
+///
+/// - ``swift``
+/// - ``objectiveC``
+/// - ``metal``
+/// - ``javaScript``
+/// - ``knownLanguages``
 public struct SourceLanguage: Hashable, Codable, Comparable {
     /// The display name of the programming language.
     public var name: String

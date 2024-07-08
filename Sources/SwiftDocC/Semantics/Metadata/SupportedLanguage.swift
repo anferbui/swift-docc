@@ -39,10 +39,7 @@ public final class SupportedLanguage: Semantic, AutomaticDirectiveConvertible {
     /// For supported values, see ``SupportedLanguage``.
     @DirectiveArgumentWrapped(
         name: .unnamed,
-        parseArgument: { _, argumentValue in
-            SourceLanguage(knownLanguageIdentifier: argumentValue)
-                ?? SourceLanguage(id: argumentValue)
-        }
+        parseArgument: parseSourceLanguage(_:_:)
     )
     public var language: SourceLanguage
     
