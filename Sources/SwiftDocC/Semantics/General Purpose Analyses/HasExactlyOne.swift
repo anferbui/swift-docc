@@ -310,14 +310,15 @@ extension Semantic.Analyses {
         
         public func analyze(_ directive: BlockDirective, children: some Sequence<Markup>, source: URL?, for bundle: DocumentationBundle, in context: DocumentationContext, problems: inout [Problem]) -> AnyLink? {
             var validLink: AnyLink?
-            var (paragraphs, notParagraphs) = directive.children.categorize { $0 as? Paragraph }
+            var (paragraphs, notParagraphs) = directive.children.categorize { $0.child() as? Paragraph }
 
-            if !paragraphs.isEmpty {
+            // Traverse all paragraphs to try to find a link, and report all extra content as problems
+            while !paragraphs.isEmpty, validLink == nil {
                 let paragraph = paragraphs.removeFirst()
 
                 var validLinks: [AnyLink]
-                let invalidLinks: [Markup]
-                (validLinks, invalidLinks) = paragraph.children.categorize { $0 as? AnyLink }
+                let notLinks: [Markup]
+                (validLinks, notLinks) = paragraph.children.categorize { $0 as? AnyLink }
 
                 if !validLinks.isEmpty {
                     validLink = validLinks.removeFirst()
@@ -325,50 +326,57 @@ extension Semantic.Analyses {
                     // Diagnose extra links.
                     problems.append(contentsOf:
                         validLinks.map { extraLink in
-                            Problem(diagnostic: extraneousContentDiagnostic(source: source, range: extraLink.range), possibleSolutions: [])
+                            extraneousContentProblem(source: source, range: extraLink.range)
                         }
                     )
-
+                    
+                    // Diagnose invalid content.
+                    problems.append(contentsOf:
+                        notLinks.map { notLink in
+                            extraneousContentProblem(source: source, range: notLink.range)
+                        }
+                    )
                 } else {
-                    // Diagnose missing link.
-                    problems.append(Problem(diagnostic: missingLinkDiagnostic(source: source, range: directive.range), possibleSolutions: []))
+                    // Diagnose extra paragraph
+                    problems.append(extraneousContentProblem(source: source, range: paragraph.range))
                 }
-                
-                // Diagnose invalid content.
-                problems.append(contentsOf:
-                    invalidLinks.map { invalidLink in
-                        Problem(diagnostic: extraneousContentDiagnostic(source: source, range: invalidLink.range), possibleSolutions: [])
-                    }
-                )
-                
-                // Diagnose extra paragraphs.
-                problems.append(contentsOf:
-                    paragraphs.map { extraParagraph in
-                        Problem(diagnostic: extraneousContentDiagnostic(source: source, range: extraParagraph.range), possibleSolutions: [])
-                    }
-                )
-            } else {
-                // Diagnose missing link.
+            }
+            
+            // Diagnose extra paragraphs.
+            problems.append(contentsOf:
+                paragraphs.map { extraParagraph in
+                    extraneousContentProblem(source: source, range: extraParagraph.range)
+                }
+            )
+            problems.append(contentsOf:
+                notParagraphs.map { extraParagraph in
+                    extraneousContentProblem(source: source, range: extraParagraph.range)
+                }
+            )
+           
+            // Diagnose missing link.
+            if validLink == nil {
                 problems.append(Problem(diagnostic: missingLinkDiagnostic(source: source, range: directive.range), possibleSolutions: []))
             }
             
-            // Diagnose extraneous children.
-            problems.append(contentsOf:
-                notParagraphs.map { notParagraph in Problem(diagnostic: extraneousContentDiagnostic(source: source, range: notParagraph.range), possibleSolutions: []) }
-            )
-
             return validLink
         }
         
-        func extraneousContentDiagnostic(source: URL?, range: SourceRange?) -> Diagnostic {
-            return Diagnostic(
+        func extraneousContentProblem(source: URL?, range: SourceRange?) -> Problem {
+            let diagnostic = Diagnostic(
                 source: source,
                 severity: .warning,
                 range: range,
                 identifier: "org.swift.docc.HasExactlyOneLink<\(Parent.self)>.ExtraneousContent",
                 summary: "Extraneous content in \(Parent.directiveName.singleQuoted)",
-                explanation: "The \(Parent.directiveName.singleQuoted) directive must contain only a single link"
+                explanation: "The \(Parent.directiveName.singleQuoted) directive must only contain a single link"
             )
+            let solutions: [Solution] = if let range {
+                [Solution(summary: "Remove the extraneous content", replacements: [Replacement(range: range, replacement: "")])]
+            } else {
+                []
+            }
+            return Problem(diagnostic: diagnostic, possibleSolutions: solutions)
         }
         
         func missingLinkDiagnostic(source: URL?, range: SourceRange?) -> Diagnostic {

@@ -45,7 +45,7 @@ extension Metadata {
         ///
         /// This content should not be rendered directly, instead the documentation link inside should be extracted
         /// and linked to from the language-switch toggle.
-        @ChildMarkup(supportsStructure: true)
+        @ChildMarkup
         public private(set) var content: MarkupContainer
         
         static var keyPaths: [String : AnyKeyPath] = [
