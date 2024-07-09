@@ -300,4 +300,86 @@ extension Semantic.Analyses {
             )
         }
     }
+    
+    public struct HasExactlyOneLink<Parent: Semantic & DirectiveConvertible>: SemanticAnalysis {
+        let severityIfNotFound: DiagnosticSeverity?
+        
+        init(severityIfNotFound: DiagnosticSeverity?) {
+            self.severityIfNotFound = severityIfNotFound
+        }
+        
+        public func analyze(_ directive: BlockDirective, children: some Sequence<Markup>, source: URL?, for bundle: DocumentationBundle, in context: DocumentationContext, problems: inout [Problem]) -> AnyLink? {
+            var validLink: AnyLink?
+            var (paragraphs, notParagraphs) = directive.children.categorize { $0 as? Paragraph }
+
+            if !paragraphs.isEmpty {
+                let paragraph = paragraphs.removeFirst()
+
+                var validLinks: [AnyLink]
+                let invalidLinks: [Markup]
+                (validLinks, invalidLinks) = paragraph.children.categorize { $0 as? AnyLink }
+
+                if !validLinks.isEmpty {
+                    validLink = validLinks.removeFirst()
+                    
+                    // Diagnose extra links.
+                    problems.append(contentsOf:
+                        validLinks.map { extraLink in
+                            Problem(diagnostic: extraneousContentDiagnostic(source: source, range: extraLink.range), possibleSolutions: [])
+                        }
+                    )
+
+                } else {
+                    // Diagnose missing link.
+                    problems.append(Problem(diagnostic: missingLinkDiagnostic(source: source, range: directive.range), possibleSolutions: []))
+                }
+                
+                // Diagnose invalid content.
+                problems.append(contentsOf:
+                    invalidLinks.map { invalidLink in
+                        Problem(diagnostic: extraneousContentDiagnostic(source: source, range: invalidLink.range), possibleSolutions: [])
+                    }
+                )
+                
+                // Diagnose extra paragraphs.
+                problems.append(contentsOf:
+                    paragraphs.map { extraParagraph in
+                        Problem(diagnostic: extraneousContentDiagnostic(source: source, range: extraParagraph.range), possibleSolutions: [])
+                    }
+                )
+            } else {
+                // Diagnose missing link.
+                problems.append(Problem(diagnostic: missingLinkDiagnostic(source: source, range: directive.range), possibleSolutions: []))
+            }
+            
+            // Diagnose extraneous children.
+            problems.append(contentsOf:
+                notParagraphs.map { notParagraph in Problem(diagnostic: extraneousContentDiagnostic(source: source, range: notParagraph.range), possibleSolutions: []) }
+            )
+
+            return validLink
+        }
+        
+        func extraneousContentDiagnostic(source: URL?, range: SourceRange?) -> Diagnostic {
+            return Diagnostic(
+                source: source,
+                severity: .warning,
+                range: range,
+                identifier: "org.swift.docc.HasExactlyOneLink<\(Parent.self)>.ExtraneousContent",
+                summary: "Extraneous content in \(Parent.directiveName.singleQuoted)",
+                explanation: "The \(Parent.directiveName.singleQuoted) directive must contain only a single link"
+            )
+        }
+        
+        func missingLinkDiagnostic(source: URL?, range: SourceRange?) -> Diagnostic {
+            return Diagnostic(
+                source: source,
+                severity: .warning,
+                range: range,
+                identifier: "org.swift.docc.HasExactlyOneLink<\(Parent.self)>.MissingContent",
+                summary: "Missing link in \(Parent.directiveName.singleQuoted)",
+                explanation: "The \(Parent.directiveName.singleQuoted) directive must contain a link"
+            )
+        }
+    }
 }

@@ -37,9 +37,14 @@ extension Metadata {
                 
         // Directive parameter definition
         
+        /// The language identifier of the symbol to define as a synonym.
         @DirectiveArgumentWrapped(parseArgument: parseSourceLanguage(_:_:))
         public var language: SourceLanguage
         
+        /// The inline markup contained in this 'Synonym' directive.
+        ///
+        /// This content should not be rendered directly, instead the documentation link inside should be extracted
+        /// and linked to from the language-switch toggle.
         @ChildMarkup(supportsStructure: true)
         public private(set) var content: MarkupContainer
         
@@ -70,7 +75,17 @@ extension Metadata {
         // Additional validation of the directive
         
         func validate(source: URL?, for bundle: DocumentationBundle, in context: DocumentationContext, problems: inout [Problem]) -> Bool {
-            // TODO: Actually validate here
+            _ = Semantic.Analyses.HasExactlyOneLink<Synonym>(
+                severityIfNotFound: .warning
+            ).analyze(
+                originalMarkup,
+                children: originalMarkup.children,
+                source: source,
+                for: bundle,
+                in: context,
+                problems: &problems
+            )
+            
             return true
         }
     }
