@@ -136,7 +136,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
     
     public mutating func visitTutorial(_ tutorial: Tutorial) -> RenderTree? {
         var node = RenderNode(identifier: identifier, kind: .tutorial)
-        
+        var contentCompiler = RenderContentCompiler(context: context, bundle: bundle, identifier: identifier)
         var hierarchyTranslator = RenderHierarchyTranslator(context: context, bundle: bundle)
         
         if let hierarchy = hierarchyTranslator.visitTechnologyNode(identifier) {
@@ -156,7 +156,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
         collectedTopicReferences.append(contentsOf: hierarchyTranslator.collectedTopicReferences)
         
         let documentationNode = try! context.entity(with: identifier)
-        node.variants = variants(for: documentationNode)
+        node.variants = variants(for: documentationNode, compiler: &contentCompiler)
                 
         var intro = visitIntro(tutorial.intro) as! IntroRenderSection
         intro.estimatedTimeInMinutes = tutorial.durationMinutes
@@ -377,7 +377,8 @@ public struct RenderNodeTranslator: SemanticVisitor {
 
     public mutating func visitTechnology(_ technology: Technology) -> RenderTree? {
         var node = RenderNode(identifier: identifier, kind: .overview)
-        
+        var contentCompiler = RenderContentCompiler(context: context, bundle: bundle, identifier: identifier)
+
         node.metadata.title = technology.intro.title
         node.metadata.category = technology.name
         node.metadata.categoryPathComponent = identifier.url.lastPathComponent
@@ -385,7 +386,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
         node.metadata.role = DocumentationContentRenderer.role(for: .technology).rawValue
         
         let documentationNode = try! context.entity(with: identifier)
-        node.variants = variants(for: documentationNode)
+        node.variants = variants(for: documentationNode, compiler: &contentCompiler)
 
         var intro = visitIntro(technology.intro) as! IntroRenderSection
         if let firstTutorial = self.firstTutorial(ofTechnology: identifier) {
@@ -600,7 +601,8 @@ public struct RenderNodeTranslator: SemanticVisitor {
         var node = RenderNode(identifier: identifier, kind: .article)
         // Contains symbol references declared in the Topics section.
         var topicSectionContentCompiler = RenderContentCompiler(context: context, bundle: bundle, identifier: identifier)
-        
+        var contentCompiler = RenderContentCompiler(context: context, bundle: bundle, identifier: identifier)
+
         node.metadata.title = article.title!.plainText
         
         // Detect the article modules from its breadcrumbs.
@@ -634,7 +636,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
         if let topLevelModule = context.soleRootModuleReference,
            try! context.entity(with: topLevelModule).kind.isSymbol
         {
-            node.variants = variants(for: documentationNode)
+            node.variants = variants(for: documentationNode, compiler: &contentCompiler)
         }
         
         if let abstract = article.abstractSection,
@@ -877,7 +879,8 @@ public struct RenderNodeTranslator: SemanticVisitor {
     
     public mutating func visitTutorialArticle(_ article: TutorialArticle) -> RenderTree? {
         var node = RenderNode(identifier: identifier, kind: .article)
-        
+        var contentCompiler = RenderContentCompiler(context: context, bundle: bundle, identifier: identifier)
+
         var hierarchyTranslator = RenderHierarchyTranslator(context: context, bundle: bundle)
         guard let hierarchy = hierarchyTranslator.visitTechnologyNode(identifier) else {
             // This tutorial article is not curated, so we don't generate a render node.
@@ -898,7 +901,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
         node.hierarchy = hierarchy.hierarchy
         
         let documentationNode = try! context.entity(with: identifier)
-        node.variants = variants(for: documentationNode)
+        node.variants = variants(for: documentationNode, compiler: &contentCompiler)
         
         collectedTopicReferences.append(contentsOf: hierarchyTranslator.collectedTopicReferences)
         
@@ -1326,7 +1329,7 @@ public struct RenderNodeTranslator: SemanticVisitor {
         }
 
         node.metadata.customMetadata = metadataCustomDictionary
-        node.variants = variants(for: documentationNode)
+        node.variants = variants(for: documentationNode, compiler: &contentCompiler)
         
         collectedTopicReferences.append(identifier)
         
@@ -1820,26 +1823,36 @@ public struct RenderNodeTranslator: SemanticVisitor {
         }
     }
     
-    private func variants(for documentationNode: DocumentationNode) -> [RenderNode.Variant] {
+    private func variants(for documentationNode: DocumentationNode, compiler: inout RenderContentCompiler) -> [RenderNode.Variant] {
         let generator = PresentationURLGenerator(context: context, baseURL: bundle.baseURL)
         
-        return documentationNode.availableSourceLanguages
-            .sorted(by: { language1, language2 in
-                // Emit Swift first, then alphabetically.
-                switch (language1, language2) {
-                case (.swift, _): return true
-                case (_, .swift): return false
-                default: return language1.id < language2.id
+        var allVariants: [SourceLanguage: [ResolvedTopicReference]] = Dictionary(uniqueKeysWithValues: documentationNode.availableSourceLanguages.map { ($0, [identifier]) })
+        if let synonyms = documentationNode.metadata?.synonyms {
+            synonyms.forEach { synonym in
+                guard let destination = synonym.link?.destination,
+                      let reference = compiler.resolveTopicReference(destination) else {
+                    return
                 }
-            })
-            .map { sourceLanguage in
-                RenderNode.Variant(
-                    traits: [.interfaceLanguage(sourceLanguage.id)],
-                    paths: [
-                        generator.presentationURLForReference(identifier).path
-                    ]
-                )
+                
+                allVariants[synonym.language] = allVariants[synonym.language, default: []] + [reference]
             }
+        }
+        
+        return allVariants.sorted(by: { variant1, variant2 in
+            // Emit Swift first, then alphabetically.
+            switch (variant1.key, variant2.key) {
+            case (.swift, _): return true
+            case (_, .swift): return false
+            default: return variant1.key.id < variant2.key.id
+            }
+        }).map { sourceLanguage, references in
+            RenderNode.Variant(
+                traits: [.interfaceLanguage(sourceLanguage.id)],
+                paths: references.map { reference in
+                    generator.presentationURLForReference(reference).path
+                }
+            )
+        }
     }
     
     private mutating func convertFragments(_ fragments: [SymbolGraph.Symbol.DeclarationFragments.Fragment]) -> [DeclarationRenderSection.Token] {

@@ -72,10 +72,10 @@ extension Metadata {
             self.originalMarkup = originalMarkup
         }
         
-        // Additional validation of the directive
+        // Additional validation of the markup content
         
         func validate(source: URL?, for bundle: DocumentationBundle, in context: DocumentationContext, problems: inout [Problem]) -> Bool {
-            _ = Semantic.Analyses.HasExactlyOneLink<Synonym>(
+            self.link = Semantic.Analyses.HasExactlyOneLink<Synonym>(
                 severityIfNotFound: .warning
             ).analyze(
                 originalMarkup,
@@ -88,6 +88,8 @@ extension Metadata {
             
             return true
         }
+        
+        var link: AnyLink?
     }
 }
 
